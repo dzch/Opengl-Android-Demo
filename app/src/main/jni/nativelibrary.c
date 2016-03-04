@@ -11,8 +11,16 @@ GLuint p;
 GLuint id_y, id_u, id_v; // Texture id
 GLuint textureUniformY, textureUniformU,textureUniformV;
 
+// screen size
+const int screen_w = 720, screen_h = 1280;
+
+// picture pix
+const int pixel_w = 320, pixel_h = 180;
 #define ATTRIB_VERTEX 3
 #define ATTRIB_TEXTURE 4
+
+#define FULL_FILL_CUT 0
+#define FULL_FILL_SMALL 1
 
 void initializeOpenGL() 
 {
@@ -27,20 +35,16 @@ void resizeViewport(int newWidth, int newHeight)
 }
 void renderFrame() 
 {
-	//Clear
-	glClearColor(0.0,255,0.0,0.0);
-	glClear(GL_COLOR_BUFFER_BIT);
-
-    const int pixel_w = 320, pixel_h = 180;
     unsigned char buf[pixel_w*pixel_h*3/2];
     unsigned char *plane[3];
-
-	//YUV Data
+    
+    //YUV Data
     plane[0] = buf;
     plane[1] = plane[0] + pixel_w*pixel_h;
     plane[2] = plane[1] + pixel_w*pixel_h/4;
+    
+    FILE *infile = NULL;
 
-	FILE *infile = NULL;
     if((infile=fopen("/storage/sdcard0/Download/test_yuv420p_320x180.yuv", "rb"))==NULL){
 		__android_log_print(ANDROID_LOG_WARN, "GL-RENDER: ", "cannot open this file: %s", strerror(errno));
         return;
@@ -54,6 +58,7 @@ void renderFrame()
     }
 	__android_log_print(ANDROID_LOG_DEBUG, "GL-RENGER: ", "render loop");
 	//Clear
+	//Green background
 	glClearColor(0.0,255,0.0,0.0);
 	glClear(GL_COLOR_BUFFER_BIT);
 	//Y
@@ -158,19 +163,49 @@ void InitShaders()
 	textureUniformU = glGetUniformLocation(p, "tex_u");
 	textureUniformV = glGetUniformLocation(p, "tex_v"); 
 
-	static const GLfloat vertexVertices[] = {
+	static GLfloat vertexVertices[] = {
 		-1.0f, -1.0f,
 		1.0f, -1.0f,
 		-1.0f,  1.0f,
 		1.0f,  1.0f,
 	};    
 
-	static const GLfloat textureVertices[] = {
+	// 图片填满屏幕、会变形（拉伸和压缩）
+	static GLfloat textureVertices[] = {
 		0.0f,  1.0f,
 		1.0f,  1.0f,
 		0.0f,  0.0f,
 		1.0f,  0.0f,
 	}; 
+#if FULL_FILL_CUT    // 保证图片填满屏幕、不变形、裁剪掉超出屏幕的部分；所以应该修改素材
+	float rw = pixel_w*1.0 / screen_w;
+	float rh = pixel_h*1.0 / screen_h;
+	float r = 0;
+	if (rw > rh) {
+		r = rh/rw;
+		r = r/2;
+		textureVertices[4] = (textureVertices[0] += r);
+		textureVertices[6] = (textureVertices[2] -= r);
+	} else {
+		r = rw/rh;
+		r = r/2;
+		textureVertices[3] = (textureVertices[1] -= r);
+		textureVertices[7] = (textureVertices[5] += r);
+	}
+#elif FULL_FILL_SMALL  // 保证图片不变形、宽或高填满屏幕、不裁剪（流出黑边）; 所以应该修改位置
+	float rw = pixel_w*1.0 / screen_w;
+	float rh = pixel_h*1.0 / screen_h;
+	float r = 0;
+	if (rw > rh) {
+		r = rh/rw;
+		vertexVertices[3] = (vertexVertices[1] = -r);
+		vertexVertices[7] = (vertexVertices[5] = r);
+	} else {
+		r = rw/rh;
+		vertexVertices[4] = (vertexVertices[0] = r);
+		vertexVertices[6] = (vertexVertices[2] = -r);
+	}
+#endif
 
 	//Set Arrays
     glVertexAttribPointer(ATTRIB_VERTEX, 2, GL_FLOAT, 0, 0, vertexVertices);
